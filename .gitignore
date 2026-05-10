@@ -1,0 +1,32 @@
+# Secrets — never commit
+.env
+
+# Claude Code local settings
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+.venv/
+venv/
+.venv310/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build / dist
+*.egg-info/
+dist/
+build/
