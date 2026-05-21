@@ -6,8 +6,44 @@ Uses reportlab for PDF generation.
 from __future__ import annotations
 
 import io
+import os
 from datetime import datetime
 from typing import Any
+
+# ── Register a Unicode/Cyrillic-capable font ──────────────────────────────────
+def _setup_fonts() -> tuple[str, str]:
+    """Register DejaVu TTF fonts; return (normal_font, bold_font)."""
+    try:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+
+        # Search paths: Docker (Debian/Ubuntu), macOS Homebrew, bundled fallback
+        candidates = [
+            ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+            ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
+            ("/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+             "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"),
+            ("/System/Library/Fonts/Supplemental/Arial.ttf",
+             "/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
+            ("/Library/Fonts/Arial.ttf", "/Library/Fonts/Arial Bold.ttf"),
+        ]
+
+        for reg_path, bold_path in candidates:
+            if os.path.exists(reg_path):
+                pdfmetrics.registerFont(TTFont("CyrFont", reg_path))
+                if os.path.exists(bold_path):
+                    pdfmetrics.registerFont(TTFont("CyrFont-Bold", bold_path))
+                else:
+                    pdfmetrics.registerFont(TTFont("CyrFont-Bold", reg_path))
+                return "CyrFont", "CyrFont-Bold"
+    except Exception:
+        pass
+    return _FONT, _FONT_BOLD   # ASCII-only fallback
+
+
+_FONT, _FONT_BOLD = _setup_fonts()
 
 SEV_ORDER = ["critical", "high", "medium", "low", "info"]
 SEV_COLORS = {
@@ -62,14 +98,14 @@ def generate_pdf_report(
 
     styles = getSampleStyleSheet()
     normal = styles["Normal"]
-    normal.fontName = "Helvetica"
+    normal.fontName = _FONT
     normal.fontSize = 9
     normal.leading = 13
 
-    h1 = ParagraphStyle("H1", parent=styles["Heading1"], fontSize=16, spaceAfter=4)
-    h2 = ParagraphStyle("H2", parent=styles["Heading2"], fontSize=12, spaceAfter=4, spaceBefore=10)
-    h3 = ParagraphStyle("H3", parent=styles["Heading3"], fontSize=10, spaceAfter=2, spaceBefore=6)
-    caption = ParagraphStyle("Cap", parent=normal, fontSize=8, textColor=colors.grey)
+    h1 = ParagraphStyle("H1", parent=styles["Heading1"], fontName=_FONT_BOLD, fontSize=16, spaceAfter=4)
+    h2 = ParagraphStyle("H2", parent=styles["Heading2"], fontName=_FONT_BOLD, fontSize=12, spaceAfter=4, spaceBefore=10)
+    h3 = ParagraphStyle("H3", parent=styles["Heading3"], fontName=_FONT_BOLD, fontSize=10, spaceAfter=2, spaceBefore=6)
+    caption = ParagraphStyle("Cap", parent=normal, fontName=_FONT, fontSize=8, textColor=colors.grey)
     mono = ParagraphStyle("Mono", parent=normal, fontName="Courier", fontSize=8, leading=11)
 
     date_str = date or datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
@@ -90,9 +126,9 @@ def generate_pdf_report(
     ]
     meta_table = Table(meta, colWidths=[3*cm, 7.5*cm, 3*cm, 4.5*cm])
     meta_table.setStyle(TableStyle([
-        ("FONTNAME",    (0, 0), (-1, -1), "Helvetica"),
-        ("FONTNAME",    (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTNAME",    (2, 0), (2, -1), "Helvetica-Bold"),
+        ("FONTNAME",    (0, 0), (-1, -1), _FONT),
+        ("FONTNAME",    (0, 0), (0, -1), _FONT_BOLD),
+        ("FONTNAME",    (2, 0), (2, -1), _FONT_BOLD),
         ("FONTSIZE",    (0, 0), (-1, -1), 8),
         ("TEXTCOLOR",   (0, 0), (0, -1), colors.HexColor("#2c3e50")),
         ("TEXTCOLOR",   (2, 0), (2, -1), colors.HexColor("#2c3e50")),
@@ -107,11 +143,11 @@ def generate_pdf_report(
     banner = Table(
         [[
             Paragraph(f"<b>Вердикт: {verdict_label}</b>", ParagraphStyle(
-                "V", fontName="Helvetica-Bold", fontSize=14,
+                "V", fontName=_FONT_BOLD, fontSize=14,
                 textColor=colors.white, alignment=TA_CENTER,
             )),
             Paragraph(f"<b>Risk Score: {risk_score}/100</b>", ParagraphStyle(
-                "RS", fontName="Helvetica-Bold", fontSize=14,
+                "RS", fontName=_FONT_BOLD, fontSize=14,
                 textColor=colors.white, alignment=TA_CENTER,
             )),
         ]],
@@ -148,8 +184,8 @@ def generate_pdf_report(
 
     sev_table = Table(sev_data, colWidths=[5*cm, 3*cm])
     sev_style = [
-        ("FONTNAME",  (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTNAME",  (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("FONTNAME",  (0, 0), (-1, 0), _FONT_BOLD),
+        ("FONTNAME",  (0, -1), (-1, -1), _FONT_BOLD),
         ("FONTSIZE",  (0, 0), (-1, -1), 9),
         ("GRID",      (0, 0), (-1, -1), 0.5, colors.grey),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2c3e50")),
@@ -161,7 +197,7 @@ def generate_pdf_report(
     for row_i, sev in enumerate([s for s in SEV_ORDER if counts.get(s, 0)], 1):
         r, g, b = SEV_COLORS.get(sev, (0.5, 0.5, 0.5))
         sev_style.append(("TEXTCOLOR", (0, row_i), (0, row_i), colors.Color(r, g, b)))
-        sev_style.append(("FONTNAME",  (0, row_i), (0, row_i), "Helvetica-Bold"))
+        sev_style.append(("FONTNAME",  (0, row_i), (0, row_i), _FONT_BOLD))
     sev_table.setStyle(TableStyle(sev_style))
     story.append(sev_table)
     story.append(Spacer(1, 0.4*cm))
@@ -192,14 +228,14 @@ def generate_pdf_report(
 
             header_data = [[
                 Paragraph(f"<b>#{idx} {title}</b>", ParagraphStyle(
-                    "FH", fontName="Helvetica-Bold", fontSize=9,
+                    "FH", fontName=_FONT_BOLD, fontSize=9,
                 )),
                 Paragraph(f"<b>{sev.upper()}</b>", ParagraphStyle(
-                    "FS", fontName="Helvetica-Bold", fontSize=9,
+                    "FS", fontName=_FONT_BOLD, fontSize=9,
                     textColor=sev_color, alignment=TA_CENTER,
                 )),
                 Paragraph(f"{tool} · {rid}", ParagraphStyle(
-                    "FT", fontName="Helvetica", fontSize=8,
+                    "FT", fontName=_FONT, fontSize=8,
                     textColor=colors.grey,
                 )),
             ]]
