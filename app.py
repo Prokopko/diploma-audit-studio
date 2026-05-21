@@ -31,8 +31,19 @@ st.markdown("""
 
 # ── Функция рендера результата (определяем до вызова) ─────────────────────────
 def _render_result(scan_result, etherscan_info, source_code, contract_name):
-    verdict    = (scan_result.get("llm_summary") or {}).get("overall_verdict") or scan_result.get("trust_flag", "")
     risk_score = scan_result.get("risk_score", 0)
+    # Prefer LLM verdict string; fall back to trust_flag → derive verdict from score
+    _llm_verdict = (scan_result.get("llm_summary") or {}).get("overall_verdict")
+    if _llm_verdict:
+        verdict = str(_llm_verdict).lower()
+    else:
+        trust_flag = scan_result.get("trust_flag", 0)
+        if trust_flag == 1 or risk_score < 20:
+            verdict = "trusted"
+        elif risk_score < 50:
+            verdict = "warning"
+        else:
+            verdict = "suspicious"
     llm_sum    = scan_result.get("llm_summary") or {}
     findings   = scan_result.get("findings", [])
     sev_counts = scan_result.get("severity_counts", {})
@@ -43,7 +54,7 @@ def _render_result(scan_result, etherscan_info, source_code, contract_name):
         "warning":    ("verdict-warning",    "Warning"),
         "suspicious": ("verdict-suspicious", "Suspicious"),
     }
-    css_class, label = VERDICT_CSS.get(str(verdict).lower(), ("verdict-unknown", verdict.upper() if verdict else "N/A"))
+    css_class, label = VERDICT_CSS.get(str(verdict).lower(), ("verdict-unknown", str(verdict).upper() if verdict is not None else "N/A"))
 
     st.markdown(f"""
     <div class="verdict-banner {css_class}">
